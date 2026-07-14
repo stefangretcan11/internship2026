@@ -1,7 +1,7 @@
-venv/
+../venv/
 env/
 
-.env
+TownGuardian/.env
 
 db.sqlite3
 
@@ -10,3 +10,4 @@ __pycache__/
 *.pyo
 
 .idea/
+
