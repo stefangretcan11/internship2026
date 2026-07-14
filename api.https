@@ -1,12 +1,11 @@
-### Register a new user
+###Register a new user
 POST http://localhost:8000/auth/users/
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "username": "testuser",
-  "password": "StrongPass123!",
-  "re_password": "StrongPass123!"
+  "email": "stefan@gmail.com",
+  "password": "Stefan@2026!",
+  "re_password": "Stefan@2026!"
 }
 
 ### Login — get access + refresh tokens
@@ -15,8 +14,8 @@ POST http://localhost:8000/auth/jwt/create/
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "password": "StrongPass123!"
+  "email": "stefan@gmail.com",
+  "password": "Stefan@2026!",
 }
 
 ### Use the access token — get current user
@@ -39,10 +38,15 @@ Content-Type: application/json
   "token": "{{login.response.body.access}}"
 }
 
-### Request password reset email
-POST http://localhost:8000/auth/users/reset_password/
+
+### Reset password by email (no auth required)
+POST http://localhost:8000/auth/reset-password/
 Content-Type: application/json
 
 {
-  "email": "test@example.com"
+  "email": "stefan@gmail.com",
+  "new_password": "NewPass123!"
 }
+
+
+
