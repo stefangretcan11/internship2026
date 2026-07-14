@@ -10,7 +10,7 @@ services:
    volumes:
      - postgres_data:/var/lib/postgresql/data
    env_file:
-     - .env
+     - ../.env
 
  django-web:
    build: .
@@ -32,6 +32,6 @@ services:
      DATABASE_HOST: ${DB_HOST}
      DATABASE_PORT: ${DB_PORT}
    env_file:
-     - .env
+     - ../.env
 volumes:
    postgres_data:
