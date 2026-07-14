@@ -1,7 +1,12 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-*
-./db.sqlite3
+venv/
+env/
+
 .env
-main.py
-./pycache
-.idea
+
+db.sqlite3
+
+__pycache__/
+*.pyc
+*.pyo
+
+.idea/
