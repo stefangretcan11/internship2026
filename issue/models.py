@@ -67,7 +67,7 @@ class Issue(models.Model):
 
     date_updated = models.DateTimeField(auto_now=True)
 
-    report_count = models.PositiveIntegerField(default=0)
+    report_count = models.PositiveIntegerField(default=1)
 
     def __str__(self):
         return self.title

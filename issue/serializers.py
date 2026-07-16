@@ -22,6 +22,7 @@ class IssueSerializer(serializers.ModelSerializer):
             "is_validated",
             "date_created",
             "date_updated",
+            "report_count"
         )
 
         read_only_fields = (

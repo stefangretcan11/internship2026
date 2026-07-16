@@ -3,7 +3,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from issue.models import Comment, Issue, IssueReport
 from issue.serializers import CommentSerializer
-from django.db.models import Q
+from django.db.models import Q, F
 from users.models import CustomUser
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -134,6 +134,15 @@ class IssueViewSet(viewsets.ModelViewSet):
                 is_system=True
             )
 
+    def report(self, request, pk=None):
+        issue = self.get_object()
+        Issue.objects.filter(pk=issue.pk).update(report_count=F('report_count') + 1)
+        issue.refresh_from_db(fields=['report_count'])
+        return Response(
+            {'report_count': issue.report_count},
+            status=status.HTTP_200_OK,
+        )
+
 
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
@@ -149,7 +158,7 @@ class CommentViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsCommentOwner()]
         elif self.action == 'destroy':
             # the author or an admin can delete
-            return [IsAuthenticated(), IsCommentOwner() | IsAdmin()]
+            return [IsAuthenticated(), IsCommentOwner(), IsAdmin()]
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
