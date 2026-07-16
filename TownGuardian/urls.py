@@ -9,8 +9,10 @@ from users.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("api/", include("zone.urls")),
+    path("api/", include("issue.urls")),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    
 
     # auth
     path('auth/jwt/create/', CustomTokenObtainPairView.as_view(), name='jwt-create'),

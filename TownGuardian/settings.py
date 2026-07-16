@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'users',
     'rest_framework_simplejwt',
     'zone',
+    'issue',
 ]
 AUTH_USER_MODEL = 'users.CustomUser'
 
