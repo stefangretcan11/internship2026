@@ -11,6 +11,12 @@ class Issue(models.Model):
         IN_PROGRESS = "in_progress", "In Progress"
         DONE = "done", "Done"
 
+    class ValidationStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        VALIDATED = "validated", "Validated"
+        REJECTED_DUPLICATE = "rejected_duplicate", "Rejected Duplicate"
+        CHANGES_REQUESTED = "changes_requested", "Changes Requested"
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -63,6 +69,17 @@ class Issue(models.Model):
 
     is_validated = models.BooleanField(default=False)
 
+    validation_status = models.CharField(
+        max_length=30,
+        choices=ValidationStatus.choices,
+        default=ValidationStatus.PENDING,
+    )
+
+    validation_message = models.TextField(
+        blank=True,
+        default="",
+    )
+
     date_created = models.DateTimeField(auto_now_add=True)
 
     date_updated = models.DateTimeField(auto_now=True)
@@ -98,3 +115,22 @@ class IssueReport(models.Model):
 
     def __str__(self):
         return f"Report by {self.user} on Issue {self.issue_id}"
+
+    
+class Attachment(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    issue = models.ForeignKey(
+        Issue,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+
+    image = models.TextField()
+
+    def __str__(self):
+        return f"Attachment for {self.issue.title}"

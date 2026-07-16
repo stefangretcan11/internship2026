@@ -1,10 +1,28 @@
+from django.db import transaction
+
 from rest_framework import serializers
 from issue.models import Comment
 from users.models import CustomUser
 from .models import Issue
+from .models import Attachment, Issue
+
+
+class AttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Attachment
+        fields = (
+            "id",
+            "image",
+        )
+        read_only_fields = ("id",)
 
 
 class IssueSerializer(serializers.ModelSerializer):
+    attachments = AttachmentSerializer(
+        many=True,
+        required=False,
+    )
+
     class Meta:
         model = Issue
         fields = (
@@ -22,7 +40,10 @@ class IssueSerializer(serializers.ModelSerializer):
             "is_validated",
             "date_created",
             "date_updated",
-            "report_count"
+            "report_count",
+            "attachments",
+            "validation_status",
+            "validation_message",
         )
 
         read_only_fields = (
@@ -34,7 +55,9 @@ class IssueSerializer(serializers.ModelSerializer):
             "is_validated",
             "date_created",
             "date_updated",
-            'report_count'
+            'report_count',
+            "validation_status",
+            "validation_message",
         )
 
     def validate_gps_lat(self, value):
@@ -53,6 +76,22 @@ class IssueSerializer(serializers.ModelSerializer):
 
         return value
 
+    @transaction.atomic
+    def create(self, validated_data):
+        attachments_data = validated_data.pop("attachments", [])
+
+        issue = Issue.objects.create(**validated_data)
+
+        Attachment.objects.bulk_create([
+            Attachment(
+                issue=issue,
+                image=attachment_data["image"],
+            )
+            for attachment_data in attachments_data
+        ])
+
+        return issue
+
 
 class IssueUpdateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -65,7 +104,6 @@ class IssueUpdateSerializer(serializers.ModelSerializer):
             "location",
             "status",
             "is_private",
-            "is_validated",
         )
 
     def validate_gps_lat(self, value):
@@ -97,14 +135,11 @@ class IssueUpdateSerializer(serializers.ModelSerializer):
         }
 
         if user.role == CustomUser.Role.CITIZEN:
-            forbidden_fields = changed_fields.intersection(
-                {"status", "is_validated"}
-            )
+            forbidden_fields = changed_fields.intersection({"status"})
 
             if forbidden_fields:
                 raise serializers.ValidationError({
-                    field_name: "Citizens cannot modify this field."
-                    for field_name in forbidden_fields
+                    "status": "Citizens cannot modify issue status."
                 })
 
         elif user.role == CustomUser.Role.AGENT:
@@ -130,14 +165,11 @@ class IssueUpdateSerializer(serializers.ModelSerializer):
                 })
 
         elif user.role == CustomUser.Role.VALIDATOR:
-            forbidden_fields = changed_fields.difference({"is_validated"})
-
-            if forbidden_fields:
+            if changed_fields:
                 raise serializers.ValidationError({
-                    field_name: (
-                        "Validators can only change issue validation."
+                    "detail": (
+                        "Validators must use the dedicated validation endpoints."
                     )
-                    for field_name in forbidden_fields
                 })
 
         elif user.role not in {
@@ -153,11 +185,9 @@ class IssueUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
 
-        # Un issue validat devine vizibil tuturor cetățenilor.
         if instance.is_validated:
             instance.is_private = False
 
-        # Un issue finalizat trebuie de asemenea să fie public.
         if instance.status == Issue.Status.DONE:
             instance.is_private = False
 

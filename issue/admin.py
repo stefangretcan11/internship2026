@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import Issue
+from .models import Attachment, Issue
+
+
+class AttachmentInline(admin.TabularInline):
+    model = Attachment
+    extra = 0
+    readonly_fields = ("id",)
 
 
 @admin.register(Issue)
@@ -32,3 +38,20 @@ class IssueAdmin(admin.ModelAdmin):
         "date_created",
         "date_updated",
     )
+
+    inlines = [AttachmentInline]
+
+
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "issue",
+    )
+
+    search_fields = (
+        "issue__title",
+        "issue__owner__email",
+    )
+
+    readonly_fields = ("id",)

@@ -63,7 +63,6 @@ class IsAgent(BasePermission):
 
 
 class IsAdmin(BasePermission):
-
     def has_permission(self, request, view):
         return bool(
             request.user
@@ -74,7 +73,6 @@ class IsAdmin(BasePermission):
                 CustomUser.Role.SUPERADMIN,
             }
         )
-
 
 class IsAgentOrAbove(BasePermission):
     ALLOWED_ROLES = {
@@ -190,6 +188,21 @@ class IsIssueOwnerOrAdmin(BasePermission):
             return True
 
         return (
-                user.role == CustomUser.Role.CITIZEN
-                and obj.owner_id == user.id
+            user.role == CustomUser.Role.CITIZEN
+            and obj.owner_id == user.id
         )
+class IsIssueOwner(BasePermission):
+    message = "Only the citizen who created this issue can resubmit it."
+
+    def has_permission(self, request, view):
+        user = request.user
+
+        return bool(
+            user
+            and user.is_authenticated
+            and user.status == CustomUser.Status.ACTIVE
+            and user.role == CustomUser.Role.CITIZEN
+        )
+
+    def has_object_permission(self, request, view, obj):
+        return obj.owner_id == request.user.id
