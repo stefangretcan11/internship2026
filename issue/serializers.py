@@ -44,6 +44,7 @@ class IssueSerializer(serializers.ModelSerializer):
             "attachments",
             "validation_status",
             "validation_message",
+            "category"
         )
 
         read_only_fields = (

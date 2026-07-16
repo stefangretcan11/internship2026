@@ -1,10 +1,10 @@
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets,filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, F
-
+from django_filters.rest_framework import DjangoFilterBackend
 from issue.models import Comment, Issue, IssueReport
 from issue.serializers import CommentSerializer
 from .services import calculate_distance_meters
@@ -36,6 +36,10 @@ class IssueViewSet(viewsets.ModelViewSet):
     queryset = Issue.objects.all()
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated]
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'status']
+    search_fields = ['title', 'description']
 
     def get_queryset(self):
         user = self.request.user
@@ -146,8 +150,6 @@ class IssueViewSet(viewsets.ModelViewSet):
                 is_system=True
             )
 
-    # Note: Preserved from HEAD branch. You might want to remove this
-    # if `report_issue` replaces its functionality.
     def report(self, request, pk=None):
         issue = self.get_object()
         Issue.objects.filter(pk=issue.pk).update(report_count=F('report_count') + 1)
