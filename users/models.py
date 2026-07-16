@@ -1,6 +1,8 @@
-from django.contrib.auth.models import AbstractUser
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.conf import settings
 
 
 class CustomUserManager(BaseUserManager):
@@ -16,12 +18,15 @@ class CustomUserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('role', 'superadmin')
-        extra_fields.setdefault('status', 'active')
+        extra_fields.setdefault('role', 'admin')
+        extra_fields.setdefault('status', 'validated')
         return self.create_user(email, password, **extra_fields)
 
 
 class CustomUser(AbstractUser):
+    REQUIRED_FIELDS = []
+    objects = CustomUserManager()
+
     class Role(models.TextChoices):
         CITIZEN = 'citizen', 'Citizen'
         VALIDATOR = 'validator', 'Validator'
@@ -35,11 +40,13 @@ class CustomUser(AbstractUser):
         ACTIVE = 'active', 'Active'
         REJECTED = 'rejected', 'Rejected'
 
+    photo = models.CharField(max_length=500, blank=True, null=True)
+    address = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(unique=True)
+    personal_number = models.CharField(max_length=50, blank=True, null=True)
+
     username = None
-    objects = CustomUserManager()
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = []
 
     role = models.CharField(
         max_length=20,
@@ -68,3 +75,4 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return f" ({self.role}) [{self.status}]"
+

@@ -14,17 +14,19 @@ from pathlib import Path
 import environ
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+load_dotenv()
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1").split(",")
-
+# ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1").split(",")
+ALLOWED_HOSTS = ["*"]
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -38,6 +40,7 @@ INSTALLED_APPS = [
     'djoser',
     'users',
     'rest_framework_simplejwt',
+    'zone',
 ]
 AUTH_USER_MODEL = 'users.CustomUser'
 
@@ -110,7 +113,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # password reset via email
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DOMAIN = 'localhost:3000'
 SITE_NAME = 'TownGuardian'
 
@@ -122,27 +124,47 @@ USE_I18N = True
 
 USE_TZ = True
 
-# cors
-CORS_ALLOW_ALL_ORIGINS = True
-
 STATIC_URL = 'static/'
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+#     "http://127.0.0.1",
+#     "http://192.168.150.105:8000",
+#     "http://86.123.65.120"
+# ]
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1",
 ]
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 DJOSER = {
     'LOGIN_FIELD': 'email',
     'USER_CREATE_PASSWORD_RETYPE': True,
-    'SEND_ACTIVATION_EMAIL': False,  # manual activation for users, not by email
-    'PASSWORD_RESET_CONFIRM_URL': 'password/reset/{uid}/{token}',
+    'SEND_ACTIVATION_EMAIL': False,
+    "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}",
     'SERIALIZERS': {
         'user_create': 'users.serializers.CustomUserCreateSerializer',
+        'user_create_password_retype': 'users.serializers.CustomUserCreateSerializer',
         'token_obtain_pair': 'users.serializers.CustomTokenObtainPairSerializer',
+        'current_user': 'users.serializers.CustomUserSerializer',
+
+
     },
 }
 
 SIMPLE_JWT = {
-    'AUTH_HEADER_TYPES': ('JWT',)
+    'AUTH_HEADER_TYPES': ('JWT',),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=1440),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": False,
 }
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_HOST = env('EMAIL_HOST')
+EMAIL_PORT = env.int('EMAIL_PORT', default=2525)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+EMAIL_USE_TLS = True
+DEFAULT_FROM_EMAIL = 'noreply@townguardian.com'

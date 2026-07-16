@@ -1,13 +1,13 @@
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.exceptions import AuthenticationFailed
+from django.contrib.auth import get_user_model
+from users.serializers import CustomTokenObtainPairSerializer, AdminUserSerializer, CustomUserSerializer
+from users.permissions import IsValidator, IsAdminOrValidator, IsAdmin
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.exceptions import AuthenticationFailed
-from rest_framework import status
-from django.contrib.auth import get_user_model
-
-from users.serializers import CustomTokenObtainPairSerializer
-from users.permissions import IsValidator
-from rest_framework.permissions import AllowAny
+from rest_framework import status, viewsets
 
 User = get_user_model()
 
@@ -18,11 +18,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         email = request.data.get('email')
         user = User.objects.filter(email=email).first()
-
-        if user and user.status == User.Status.PENDING:
-            raise AuthenticationFailed(
-                'Your account is pending validation. Please wait for approval.'
-            )
         if user and user.status == User.Status.REJECTED:
             raise AuthenticationFailed(
                 'Your account has been rejected. Contact support.'
@@ -34,7 +29,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 class ValidateUserView(APIView):
     permission_classes = [IsValidator]
 
-    # dedicated endpoint that only validator can call to change user's status.
     def patch(self, request, user_id):
         try:
             user = User.objects.get(id=user_id)
@@ -64,27 +58,31 @@ class ValidateUserView(APIView):
         })
 
 
-class ResetPasswordByEmailView(APIView):
-    permission_classes = [AllowAny]
+class UserManagementViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = AdminUserSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrValidator]
 
-    def post(self, request):
-        email = request.data.get('email')
-        new_password = request.data.get('new_password')
+    def get_permissions(self):
+        # only admins can create or delete  users
+        if self.action in ['create', 'destroy']:
+            return [IsAuthenticated(), IsAdmin()]
+        return super().get_permissions()
 
-        if not email or not new_password:
-            return Response(
-                {'error': 'email and new_password are required.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+    def perform_update(self, serializer):
+        if self.request.user.role == 'validator':
+            new_status = self.request.data.get('status')
+            if not new_status:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Validators can only update user status.")
+            serializer.save(status=new_status)
+        else:
+            serializer.save()
 
-        user = User.objects.filter(email=email).first()
-        if not user:
-            return Response(
-                {'error': 'No user found with this email.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
 
-        user.set_password(new_password)
-        user.save()
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
 
-        return Response({'message': 'Password reset successfully.'})
+    def get(self, request):
+        serializer = CustomUserSerializer(request.user)
+        return Response(serializer.data)
