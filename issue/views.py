@@ -1,12 +1,12 @@
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import status, viewsets,filters
+from rest_framework import status, viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, F
 from django_filters.rest_framework import DjangoFilterBackend
-from issue.models import Comment, Issue, IssueReport
-from issue.serializers import CommentSerializer
+from issue.models import Comment, Issue, IssueReport, Alert
+from issue.serializers import CommentSerializer, AlertSerializer
 from .services import calculate_distance_meters
 
 from users.models import CustomUser
@@ -477,3 +477,39 @@ class CommentViewSet(viewsets.ModelViewSet):
         if instance.is_system:
             raise PermissionDenied("System comments cannot be deleted.")
         instance.delete()
+
+
+class AlertViewSet(viewsets.ModelViewSet):
+    serializer_class = AlertSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Alert.objects.filter(issue_id=self.kwargs['issue_pk'])
+
+    def perform_create(self, serializer):
+        issue_pk = self.kwargs['issue_pk']
+
+        # verify the issue actually exists
+        if not Issue.objects.filter(id=issue_pk).exists():
+            raise NotFound("Issue not found.")
+
+        serializer.save(
+            issue_id=issue_pk,
+            status=Alert.Status.NEW
+        )
+
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path="seen",
+    )
+    def mark_seen(self, request, issue_pk=None, pk=None):
+        # this automatically fetches the alert or returns 404
+        alert = self.get_object()
+
+        if alert.status == Alert.Status.NEW:
+            alert.status = Alert.Status.SEEN
+            alert.save(update_fields=['status'])
+
+        serializer = self.get_serializer(alert)
+        return Response(serializer.data, status=status.HTTP_200_OK)

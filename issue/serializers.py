@@ -4,7 +4,7 @@ from rest_framework import serializers
 from issue.models import Comment
 from users.models import CustomUser
 from .models import Issue
-from .models import Attachment, Issue
+from .models import Attachment, Issue, Alert
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -205,3 +205,12 @@ class CommentSerializer(serializers.ModelSerializer):
         model = Comment
         fields = ('id', 'issue_id', 'user_id', 'description', 'attachments', 'date_created', 'date_updated')
         read_only_fields = ('id', 'date_created', 'date_updated')
+
+
+class AlertSerializer(serializers.ModelSerializer):
+    issue_id = serializers.UUIDField(source='issue.id', read_only=True)
+
+    class Meta:
+        model = Alert
+        fields = ('id', 'name', 'status', 'date_created', 'issue_id')
+        read_only_fields = ('id', 'status', 'date_created', 'issue_id')

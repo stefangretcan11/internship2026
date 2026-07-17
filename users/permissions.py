@@ -130,7 +130,7 @@ class IsOwnerOrAdmin(BasePermission):
         # admin can do anything
         if request.user.role in {'admin', 'superadmin'}:
             return True
-        # owner can edit their own
+        # owner can edit their own comments
         return view.action == 'partial_update' and request.user == obj.user
 
 

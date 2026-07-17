@@ -119,9 +119,11 @@ class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     description = models.TextField()
     attachments = models.JSONField(default=list, blank=True)
+
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
-    is_system = models.BooleanField(default=False)  # cannot be modified
+
+    is_system = models.BooleanField(default=False, editable=False)  # cannot be modified
 
     def __str__(self):
         return f"Comment by {self.user} on Issue {self.issue_id}"
@@ -144,3 +146,34 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f"Attachment for {self.issue.title}"
+
+    # alert
+
+
+class Alert(models.Model):
+    class Status(models.TextChoices):
+        NEW = "new", "New"
+        SEEN = "seen", "Seen"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+    name = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.NEW,
+    )
+    date_created = models.DateTimeField(auto_now_add=True)
+
+    # issue_id in the database
+    issue = models.ForeignKey(
+        'Issue',
+        on_delete=models.CASCADE,
+        related_name='alerts'
+    )
+
+    def __str__(self):
+        return f"Alert: {self.name} ({self.status})"

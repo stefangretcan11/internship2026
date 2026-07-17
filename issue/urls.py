@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import IssueViewSet
+from .views import IssueViewSet, AlertViewSet
 from issue.views import CommentViewSet
 
 urlpatterns = [
@@ -15,4 +15,8 @@ urlpatterns = [
          CommentViewSet.as_view({'get': 'list', 'post': 'create'})),
     path('issues/<uuid:issue_pk>/comments/<uuid:pk>/',
          CommentViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'})),
+    path('issues/<uuid:issue_pk>/alerts/',
+         AlertViewSet.as_view({'get': 'list', 'post': 'create'})),
+    path('issues/<uuid:issue_pk>/alerts/<uuid:pk>/',
+         AlertViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'})),
 ]
