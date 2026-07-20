@@ -1,6 +1,15 @@
+from rest_framework import permissions
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from users.models import CustomUser
+
+
+class IsActiveOrReadOnly(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        return request.user.status == 'active'
 
 
 class IsAdminOrReadOnly(BasePermission):
@@ -74,6 +83,7 @@ class IsAdmin(BasePermission):
             }
         )
 
+
 class IsAgentOrAbove(BasePermission):
     ALLOWED_ROLES = {
         CustomUser.Role.AGENT,
@@ -135,9 +145,10 @@ class IsOwnerOrAdmin(BasePermission):
 
 
 class IsCommentOwner(BasePermission):
+    message = "You can only modify your own comment."
 
-    def has_object_permission(self, request, view):
-        return request.user == view.get_object().user
+    def has_object_permission(self, request, view, obj):
+        return obj.user_id == request.user.id
 
 
 class CanCreateIssue(BasePermission):
@@ -146,22 +157,18 @@ class CanCreateIssue(BasePermission):
     def has_permission(self, request, view):
         user = request.user
 
-        if not user or not user.is_authenticated:
-            return False
+        if user and user.is_authenticated:
+            if user.role == CustomUser.Role.AGENT:
+                self.message = "Agents cannot report an issue."
+            elif user.status == CustomUser.Status.PENDING:
+                self.message = "Your account is pending validation."
+            elif user.status == CustomUser.Status.REJECTED:
+                self.message = "Your account has been rejected."
+            else:
+                return user.status == CustomUser.Status.ACTIVE
 
-        if user.role != CustomUser.Role.CITIZEN:
-            self.message = "Only citizens can report issues."
-            return False
-
-        if user.status == CustomUser.Status.PENDING:
-            self.message = "Your account is pending validation."
-            return False
-
-        if user.status == CustomUser.Status.REJECTED:
-            self.message = "Your account has been rejected."
-            return False
-
-        return user.status == CustomUser.Status.ACTIVE
+        # catches unauthenticated users and any conditions above that failed
+        return False
 
 
 class IsIssueOwnerOrAdmin(BasePermission):
@@ -188,9 +195,11 @@ class IsIssueOwnerOrAdmin(BasePermission):
             return True
 
         return (
-            user.role == CustomUser.Role.CITIZEN
-            and obj.owner_id == user.id
+                user.role == CustomUser.Role.CITIZEN
+                and obj.owner_id == user.id
         )
+
+
 class IsIssueOwner(BasePermission):
     message = "Only the citizen who created this issue can resubmit it."
 

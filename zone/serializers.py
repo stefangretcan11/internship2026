@@ -1,9 +1,31 @@
 from rest_framework import serializers
 
+from users.models import CustomUser
+
 from .models import Zone
 
 
 class ZoneSerializer(serializers.ModelSerializer):
+    agents = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=CustomUser.objects.filter(
+            role=CustomUser.Role.AGENT,
+        ),
+        required=False,
+    )
+    agents_display = serializers.SerializerMethodField()
+
     class Meta:
         model = Zone
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "neighborhood",
+            "color",
+            "agents",
+            "agents_display"
+        ]
+        read_only_fields = ["id"]
+
+    def get_agents_display(self, obj):
+        return obj.agent_ids_str

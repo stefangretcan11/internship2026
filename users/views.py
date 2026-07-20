@@ -1,6 +1,7 @@
+from django.core.cache import cache
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, Throttled
 from django.contrib.auth import get_user_model
 from users.serializers import CustomTokenObtainPairSerializer, AdminUserSerializer, CustomUserSerializer
 from users.permissions import IsValidator, IsAdminOrValidator, IsAdmin
@@ -23,7 +24,28 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 'Your account has been rejected. Contact support.'
             )
 
-        return super().post(request, *args, **kwargs)
+        # get the ip
+        ip_address = request.META.get('REMOTE_ADDR')
+        cache_key = f"failed_logins_{ip_address}"
+
+        # check if they are already locked out
+        failed_attempts = cache.get(cache_key, 0)
+        if failed_attempts >= 10:
+            raise Throttled(detail="Too many failed login attempts. Try again in a minute.")
+
+        try:
+          
+            response = super().post(request, *args, **kwargs)
+            
+            # reset their failure counter
+            cache.delete(cache_key)
+            return response
+            
+        except Exception as e:
+            # If login fails increment their failure counter
+            cache.set(cache_key, failed_attempts + 1, timeout=60)
+            raise e
+
 
 
 class ValidateUserView(APIView):

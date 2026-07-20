@@ -39,11 +39,11 @@ class CustomUser(AbstractUser):
         PENDING = 'pending', 'Pending'
         ACTIVE = 'active', 'Active'
         REJECTED = 'rejected', 'Rejected'
-
-    photo = models.CharField(max_length=500, blank=True, null=True)
+        DELETED = 'deleted', 'Deleted'
+    photo = models.TextField(blank=True, null=True)
     address = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(unique=True)
-    personal_number = models.CharField(max_length=50, blank=True, null=True)
+    personal_number = models.CharField(max_length=13, blank=True, null=True)
 
     username = None
     USERNAME_FIELD = 'email'
@@ -59,11 +59,15 @@ class CustomUser(AbstractUser):
         default=Status.PENDING,
     )
 
+    def delete(self, *args, **kwargs):
+        self.status = self.Status.DELETED
+        self.save(update_fields=['status', 'is_active'])
+
     def save(self, *args, **kwargs):
         # for making the superadmin = superadmin in django
         # it needs to be different from the website admin role
         # any other role has is_staff and is_superuser on false
-        self.is_active = (self.status == self.Status.ACTIVE)
+        self.is_active = (self.status in [self.Status.ACTIVE, self.Status.PENDING])
 
         if self.role == self.Role.SUPERADMIN:
             self.is_staff = True
@@ -74,5 +78,4 @@ class CustomUser(AbstractUser):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f" ({self.role}) [{self.status}]"
-
+        return f"({self.role}) [{self.status}]"

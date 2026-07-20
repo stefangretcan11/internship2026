@@ -13,20 +13,18 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import environ
 import os
+import sys
 from datetime import timedelta
-from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-load_dotenv()
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env.bool('DEBUG', default=False)
 
-# ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1").split(",")
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = env('DJANGO_ALLOWED_HOSTS').split(",")
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -43,6 +41,9 @@ INSTALLED_APPS = [
     'zone',
     'django_filters',
     'issue',
+    'django_apscheduler',
+    'sendgrid'
+
 ]
 AUTH_USER_MODEL = 'users.CustomUser'
 
@@ -50,10 +51,14 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'users.throttles.PasswordResetThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'issue_creation': '10/day',
+        'password_reset': '5/day',
+    }
 }
 
 MIDDLEWARE = [
@@ -97,6 +102,12 @@ DATABASES = {
     }
 }
 
+if 'test' in sys.argv:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }
+
 # Password validation
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -115,7 +126,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # password reset via email
-DOMAIN = 'localhost:3000'
+DOMAIN = '10.10.0.191:3000'
 SITE_NAME = 'TownGuardian'
 
 LANGUAGE_CODE = 'en-us'
@@ -137,19 +148,18 @@ STATIC_URL = 'static/'
 CORS_ALLOWED_ORIGINS = [
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 
 DJOSER = {
     'LOGIN_FIELD': 'email',
     'USER_CREATE_PASSWORD_RETYPE': True,
     'SEND_ACTIVATION_EMAIL': False,
-    "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}",
+    "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}",  # the frontend url
     'SERIALIZERS': {
         'user_create': 'users.serializers.CustomUserCreateSerializer',
         'user_create_password_retype': 'users.serializers.CustomUserCreateSerializer',
         'token_obtain_pair': 'users.serializers.CustomTokenObtainPairSerializer',
         'current_user': 'users.serializers.CustomUserSerializer',
-
 
     },
 }
@@ -162,11 +172,10 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": False,
 }
-
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-EMAIL_HOST = env('EMAIL_HOST')
-EMAIL_PORT = env.int('EMAIL_PORT', default=2525)
-EMAIL_HOST_USER = env('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-DEFAULT_FROM_EMAIL = 'noreply@townguardian.com'
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='stefangretcan18@gmail.com')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

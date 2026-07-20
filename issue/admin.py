@@ -15,14 +15,12 @@ class IssueAdmin(admin.ModelAdmin):
         "title",
         "owner",
         "status",
-        "is_private",
         "is_validated",
         "date_created",
     )
 
     list_filter = (
         "status",
-        "is_private",
         "is_validated",
     )
 

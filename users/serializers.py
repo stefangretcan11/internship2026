@@ -94,5 +94,4 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name',
             'personal_number', 'role', 'status', 'photo', 'address'
         )
-        # Prevent users from changing their own role and status
         read_only_fields = ('role', 'status', 'email')

@@ -41,8 +41,7 @@ class Issue(models.Model):
 
     gps_long = models.FloatField()
 
-    location = models.CharField(
-        max_length=50,
+    location = models.TextField(
         blank=True,
         null=True,
     )
@@ -69,8 +68,6 @@ class Issue(models.Model):
         default=Status.NEW,
     )
 
-    is_private = models.BooleanField(default=False)
-
     is_validated = models.BooleanField(default=False)
 
     validation_status = models.CharField(
@@ -94,13 +91,55 @@ class Issue(models.Model):
 
     date_updated = models.DateTimeField(auto_now=True)
 
-    report_count = models.PositiveIntegerField(default=1)
+    report_count = models.PositiveIntegerField(default=0)
+
+    def save(self, *args, **kwargs):
+        is_new = self._state.adding  # a hidden Django property that returns true if the object has never been saved before
+        status_changed = False
+        validation_changed = False
+        assigned_changed = False  # track agent changes
+
+        if not is_new:
+            old_issue = Issue.objects.only('status', 'validation_status', 'assigned').get(pk=self.pk)
+            status_changed = old_issue.status != self.status
+            validation_changed = old_issue.validation_status != self.validation_status
+            assigned_changed = old_issue.assigned_id != self.assigned_id
+
+        super().save(*args, **kwargs)
+
+        if is_new:
+            Alert.objects.create(
+                issue=self,
+                name=f"New issue : {self.title}",
+                status=Alert.Status.NEW
+            )
+        else:
+            if status_changed or validation_changed:
+                # alert for citizens
+                Alert.objects.create(
+                    issue=self,
+                    name=f"Status changed: {self.get_status_display()} / {self.get_validation_status_display()}",
+                    status=Alert.Status.NEW
+                )
+
+            if assigned_changed:
+                # alert for citizen when an agent is assigned or removed
+                agent_display = (
+                        f"{self.assigned.first_name} {self.assigned.last_name}".strip() or self.assigned.email
+                ) if self.assigned else "Unassigned"
+
+                Alert.objects.create(
+                    issue=self,
+                    name=f"Agent assigned: Issue has been assigned to {agent_display}",
+                    status=Alert.Status.NEW
+                )
 
     def __str__(self):
         return self.title
 
 
 class IssueReport(models.Model):
+    # Universally Unique Identifier
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     issue = models.ForeignKey('Issue', on_delete=models.CASCADE, related_name='reports')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -118,12 +157,10 @@ class Comment(models.Model):
     issue = models.ForeignKey('Issue', on_delete=models.CASCADE, related_name='comments')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     description = models.TextField()
-    attachments = models.JSONField(default=list, blank=True)
-
     date_created = models.DateTimeField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
-
-    is_system = models.BooleanField(default=False, editable=False)  # cannot be modified
+    is_system = models.BooleanField(default=False, editable=False)
+    attachments = models.ManyToManyField('Attachment', blank=True)
 
     def __str__(self):
         return f"Comment by {self.user} on Issue {self.issue_id}"
@@ -147,8 +184,6 @@ class Attachment(models.Model):
     def __str__(self):
         return f"Attachment for {self.issue.title}"
 
-    # alert
-
 
 class Alert(models.Model):
     class Status(models.TextChoices):
@@ -168,7 +203,6 @@ class Alert(models.Model):
     )
     date_created = models.DateTimeField(auto_now_add=True)
 
-    # issue_id in the database
     issue = models.ForeignKey(
         'Issue',
         on_delete=models.CASCADE,
