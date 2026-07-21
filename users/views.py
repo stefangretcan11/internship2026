@@ -1,9 +1,14 @@
 from django.core.cache import cache
+from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.exceptions import AuthenticationFailed, Throttled
+from rest_framework.exceptions import (
+    AuthenticationFailed, Throttled, PermissionDenied,
+)
 from django.contrib.auth import get_user_model
-from users.serializers import CustomTokenObtainPairSerializer, AdminUserSerializer, CustomUserSerializer
+from users.serializers import (
+    CustomTokenObtainPairSerializer, AdminUserSerializer, CustomUserSerializer,
+)
 from users.permissions import IsValidator, IsAdminOrValidator, IsAdmin
 
 from rest_framework.views import APIView
@@ -11,6 +16,16 @@ from rest_framework.response import Response
 from rest_framework import status, viewsets
 
 User = get_user_model()
+
+MAX_LOGIN_ATTEMPTS = 10
+LOGIN_LOCKOUT_SECONDS = 10
+
+
+def get_client_ip(request):
+    forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -24,53 +39,42 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 'Your account has been rejected. Contact support.'
             )
 
-        # get the ip
-        ip_address = request.META.get('REMOTE_ADDR')
-        cache_key = f"failed_logins_{ip_address}"
+        cache_key = f"failed_logins_{get_client_ip(request)}"
 
-        # check if they are already locked out
-        failed_attempts = cache.get(cache_key, 0)
-        if failed_attempts >= 10:
-            raise Throttled(detail="Too many failed login attempts. Try again in a minute.")
+        if cache.get(cache_key, 0) >= MAX_LOGIN_ATTEMPTS:
+            raise Throttled(
+                detail="Too many failed login attempts. Try again in a minute."
+            )
 
         try:
-          
             response = super().post(request, *args, **kwargs)
-            
-            # reset their failure counter
+        except AuthenticationFailed:
+            try:
+                cache.incr(cache_key)
+            except ValueError:
+                cache.set(cache_key, 1, timeout=LOGIN_LOCKOUT_SECONDS)
+            raise
+        else:
             cache.delete(cache_key)
             return response
-            
-        except Exception as e:
-            # If login fails increment their failure counter
-            cache.set(cache_key, failed_attempts + 1, timeout=60)
-            raise e
-
 
 
 class ValidateUserView(APIView):
     permission_classes = [IsValidator]
+    ALLOWED_STATUSES = [User.Status.ACTIVE, User.Status.REJECTED]
 
     def patch(self, request, user_id):
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response(
-                {'error': 'User not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        user = get_object_or_404(User, id=user_id)
 
         new_status = request.data.get('status')
-
-        allowed = [User.Status.ACTIVE, User.Status.REJECTED]
-        if new_status not in allowed:
+        if new_status not in self.ALLOWED_STATUSES:
             return Response(
-                {'error': f'Invalid status. Allowed values: {allowed}'},
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': f'Invalid status. Allowed values: {self.ALLOWED_STATUSES}'},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         user.status = new_status
-        user.save()
+        user.save(update_fields=['status'])
 
         return Response({
             'message': f'User has been {new_status}.',
@@ -85,21 +89,19 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdminOrValidator]
 
+    VALIDATOR_ALLOWED_FIELDS = {'status'}
+
     def get_permissions(self):
-        # only admins can create or delete  users
         if self.action in ['create', 'destroy']:
             return [IsAuthenticated(), IsAdmin()]
         return super().get_permissions()
 
     def perform_update(self, serializer):
         if self.request.user.role == 'validator':
-            new_status = self.request.data.get('status')
-            if not new_status:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied("Validators can only update user status.")
-            serializer.save(status=new_status)
-        else:
-            serializer.save()
+            submitted_fields = set(self.request.data.keys())
+            if not submitted_fields or not submitted_fields <= self.VALIDATOR_ALLOWED_FIELDS:
+                raise PermissionDenied("Validators can only update a user's status.")
+        serializer.save()
 
 
 class MeView(APIView):

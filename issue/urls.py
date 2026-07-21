@@ -4,6 +4,8 @@ from issue.views import (
     AlertViewSet,
     CommentViewSet,
     IssueViewSet,
+    IssueStatisticsView,
+    ZoneStatisticsView
 )
 
 urlpatterns = [
@@ -14,6 +16,14 @@ urlpatterns = [
             {
                 "get": "list",
                 "post": "create",
+            }
+        ),
+    ),
+    path(
+        "issues/user/",
+        IssueViewSet.as_view(
+            {
+                "get": "my_issues",
             }
         ),
     ),
@@ -40,6 +50,15 @@ urlpatterns = [
         IssueViewSet.as_view(
             {
                 "post": "report_issue",
+            }
+        ),
+    ),
+    path(
+        "issues/<uuid:pk>/follow/",
+        IssueViewSet.as_view(
+            {
+                "post": "follow",
+                "delete": "follow",
             }
         ),
     ),
@@ -133,7 +152,7 @@ urlpatterns = [
         ),
     ),
     path(
-        "alert/stream/",
+        "alerts/stream/",
         AlertViewSet.as_view(
             {
                 "get": "stream",
@@ -156,5 +175,12 @@ urlpatterns = [
             }
         ),
     ),
-
+    path(
+        "statistics/issues/",
+        IssueStatisticsView.as_view(),
+    ),
+path(
+    "statistics/zones/",
+    ZoneStatisticsView.as_view(),
+),
 ]

@@ -151,7 +151,43 @@ class IssueReport(models.Model):
     def __str__(self):
         return f"Report by {self.user} on Issue {self.issue_id}"
 
+class IssueFollower(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
 
+    issue = models.ForeignKey(
+        Issue,
+        on_delete=models.CASCADE,
+        related_name="followers",
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="followed_issues",
+    )
+
+    date_created = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("issue", "user"),
+                name="unique_issue_follower",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.user} follows "
+            f"{self.issue.title}"
+        )
+    
 class Comment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     issue = models.ForeignKey('Issue', on_delete=models.CASCADE, related_name='comments')
@@ -211,3 +247,44 @@ class Alert(models.Model):
 
     def __str__(self):
         return f"Alert: {self.name} ({self.status})"
+
+class AlertRecipient(models.Model):
+    class Status(models.TextChoices):
+        NEW = "new", "New"
+        SEEN = "seen", "Seen"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    alert = models.ForeignKey(
+        Alert,
+        on_delete=models.CASCADE,
+        related_name="recipient_states",
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="alert_states",
+    )
+
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.NEW,
+    )
+
+    date_created = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("alert", "user"),
+                name="unique_alert_recipient_state",
+            )
+        ]

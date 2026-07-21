@@ -1,6 +1,31 @@
 from math import asin, cos, radians, sin, sqrt
 from rest_framework import serializers
 
+
+def add_citizen_recipients(alert):
+    from issue.models import AlertRecipient
+    issue = alert.issue
+
+    recipient_ids = {issue.owner_id}
+
+    follower_ids = issue.followers.values_list(
+        "user_id",
+        flat=True,
+    )
+
+    recipient_ids.update(follower_ids)
+
+    AlertRecipient.objects.bulk_create(
+        [
+            AlertRecipient(
+                alert=alert,
+                user_id=user_id,
+            )
+            for user_id in recipient_ids
+        ],
+        ignore_conflicts=True,
+    )
+
 def validate_latitude(value):
     if not -90 <= value <= 90:
         raise serializers.ValidationError(

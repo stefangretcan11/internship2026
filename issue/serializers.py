@@ -1,10 +1,13 @@
 from django.db import transaction
-
 from rest_framework import serializers
-
 from issue.models import Comment
 from users.models import CustomUser
-from .models import Attachment, Issue, Alert
+from .models import (
+    Alert,
+    Attachment,
+    Issue,
+    IssueFollower,
+)
 from .utils import (
     validate_latitude,
     validate_longitude,
@@ -21,11 +24,25 @@ class AttachmentSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
 
+class AssignedAgentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+
+
 class IssueSerializer(serializers.ModelSerializer):
     attachments = AttachmentSerializer(
         many=True,
         required=False,
     )
+    followers_count = serializers.IntegerField(
+        source="followers.count",
+        read_only=True,
+    )
+    is_following = serializers.SerializerMethodField()
+    # Returns nested agent info (id, first_name, last_name) or null.
+    # Read-only so CITIZEN/AGENT can see it without needing user-list access.
+    assigned = serializers.SerializerMethodField()
 
     class Meta:
         model = Issue
@@ -47,13 +64,14 @@ class IssueSerializer(serializers.ModelSerializer):
             "attachments",
             "validation_status",
             "validation_message",
-            "category"
+            "category",
+            "followers_count",
+            "is_following",
         )
 
         read_only_fields = (
             "id",
             "owner",
-            "assigned",
             "validator",
             "status",
             "is_validated",
@@ -90,6 +108,26 @@ class IssueSerializer(serializers.ModelSerializer):
         )
 
         return issue
+
+    def get_is_following(self, issue):
+        request = self.context.get("request")
+
+        if (
+            request is None
+            or not request.user.is_authenticated
+        ):
+            return False
+
+        return IssueFollower.objects.filter(
+            issue=issue,
+            user=request.user,
+        ).exists()
+
+    def get_assigned(self, issue):
+        agent = issue.assigned
+        if agent is None:
+            return None
+        return AssignedAgentSerializer(agent).data
 
 
 class IssueUpdateSerializer(serializers.ModelSerializer):
@@ -269,6 +307,7 @@ class IssueAssignSerializer(serializers.Serializer):
             update_fields=[
                 "assigned",
                 "date_updated",
+
             ]
         )
 
