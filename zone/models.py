@@ -37,8 +37,9 @@ class Zone(models.Model):
     @property
     def agent_ids_str(self):
         return ", ".join(
-            str(agent.id) for agent in self.agents.exclude(status=CustomUser.Status.DELETED)
+            str(agent.id) for agent in self.agents.all() if agent.status != 'deleted'
         )
+
 
     def __str__(self):
         return self.name
