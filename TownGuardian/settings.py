@@ -131,7 +131,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # password reset via email
-DOMAIN = '10.10.0.191:3000'
+DOMAIN = 'townguardian.vercel.app'
 SITE_NAME = 'TownGuardian'
 
 LANGUAGE_CODE = 'en-us'
