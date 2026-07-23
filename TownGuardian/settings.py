@@ -176,9 +176,10 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
+EMAIL_TIMEOUT = 10  # fail fast instead of hanging the request
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='stefangretcan18@gmail.com')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+DEFAULT_FROM_EMAIL = f"TownGuardian <{env('EMAIL_HOST_USER', default='stefangretcan18@gmail.com')}>"
 WSGI_APPLICATION = 'TownGuardian.wsgi.application'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
