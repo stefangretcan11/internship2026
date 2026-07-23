@@ -132,7 +132,7 @@ class IssueViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsIssueOwnerOrAdmin()]
 
         if self.action == "destroy":
-            return [IsAuthenticated(), IsAdmin()]
+            return [IsAuthenticated(), IsAdminOrValidator()]
 
         if self.action in {"validated", "rejected", "incomplete", "assign"}:
             return [IsAuthenticated(), IsAdminOrValidator()]
@@ -458,7 +458,7 @@ class IssueViewSet(viewsets.ModelViewSet):
             .exclude(owner__status=CustomUser.Status.DELETED)
             .select_related("owner", "assigned", "validator", "zone")
             .prefetch_related("attachments")
-            )
+        )
 
         nearby_issues = sorted(
             (
