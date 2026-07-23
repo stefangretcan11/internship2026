@@ -1,11 +1,12 @@
 import json
+import time
 from django.db.models import Q, F, Count
 from django.db.models.functions import TruncMonth
 from django.http import StreamingHttpResponse, HttpResponse
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets, filters
+from rest_framework import status, viewsets, filters,mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import get_object_or_404
@@ -13,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from issue.filters import IssueFilter
 from issue.models import (
     Alert,
     Comment,
@@ -21,16 +23,21 @@ from issue.models import (
     IssueReport,
 )
 from issue.serializers import (
-    AlertSerializer,
     CommentSerializer,
     IssueAssignSerializer,
     IssueSerializer,
     IssueUpdateSerializer,
+    IssueValidationSerializer,
+    AlertSerializer, AssignmentResultSerializer,
 )
 from issue.utils import (
+    add_citizen_recipients,
     calculate_bounding_box,
     calculate_distance_meters,
+    calculate_agents_availability,
+    try_auto_assign,
 )
+
 from users.models import CustomUser
 from users.permissions import (
     CanCreateIssue,
@@ -66,42 +73,46 @@ def can_view_issue(user, issue):
 
     if issue.owner_id == user.id:
         return issue.validation_status != Issue.ValidationStatus.REJECTED_DUPLICATE
-
     return issue.validation_status == Issue.ValidationStatus.VALIDATED
 
 
 def get_alert_queryset_for_user(user, base_qs=None):
-    """Return the correctly-scoped alert queryset for *user*.
-
-    Extracted so it can be reused in both the REST ViewSet and the async
-    SSE view without duplicating the filter logic.
-    """
     qs = (base_qs if base_qs is not None else Alert.objects.all())
-
     if user.role == CustomUser.Role.CITIZEN:
         return qs.filter(
-            Q(issue__owner=user)
+            Q(recipient_states__user=user)
             & (
-                Q(name__startswith="STATUS CHANGE")
-                | Q(name__startswith="AGENT ASSIGNED")
+                    Q(name__startswith="STATUS CHANGE")
+                    | Q(name__startswith="AGENT ASSIGNED")
+                    | Q(name__startswith="VALIDATION UPDATE")
             )
+        )
+    if user.role == CustomUser.Role.AGENT:
+        return qs.filter(
+            Q(name__startswith="NEW TASK") & Q(issue__assigned=user)
         )
     return qs.filter(
         Q(name__startswith="NEW ISSUE") | Q(name__startswith="ESCALATION")
     )
 
+
 class IssueViewSet(viewsets.ModelViewSet):
     queryset = Issue.objects.all()
     serializer_class = IssueSerializer
     permission_classes = [IsAuthenticated, IsActiveOrReadOnly]
-
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["category", "status"]
+
+    filterset_class = IssueFilter
     search_fields = ["title", "description"]
 
     def get_queryset(self):
         return (
-            Issue.objects.select_related("owner", "assigned", "validator")
+            Issue.objects.select_related(
+                "owner",
+                "assigned",
+                "validator",
+                "zone",
+            )
             .prefetch_related("attachments")
             .order_by("-report_count", "-date_created")
         )
@@ -111,6 +122,9 @@ class IssueViewSet(viewsets.ModelViewSet):
             return IssueUpdateSerializer
         if self.action == "assign":
             return IssueAssignSerializer
+        if self.action == "validated":
+            return IssueValidationSerializer
+
         return IssueSerializer
 
     def get_permissions(self):
@@ -137,12 +151,17 @@ class IssueViewSet(viewsets.ModelViewSet):
         return super().get_throttles()
 
     def perform_create(self, serializer):
-        serializer.save(
+        issue = serializer.save(
             owner=self.request.user,
             status=Issue.Status.NEW,
             is_validated=False,
             validation_status=Issue.ValidationStatus.PENDING,
             validation_message="",
+        )
+        Alert.objects.create(
+            issue=issue,
+            name=f"NEW ISSUE: '{issue.title}' needs validation.",
+            status=Alert.Status.NEW,
         )
 
     def perform_update(self, serializer):
@@ -167,11 +186,12 @@ class IssueViewSet(viewsets.ModelViewSet):
                 description=f"Status changed from {old_status} to {new_status}. {message}",
                 is_system=True,
             )
-            Alert.objects.create(
+            alert = Alert.objects.create(
                 issue=updated_issue,
                 name=f"STATUS CHANGE: {old_status} → {new_status}",
                 status=Alert.Status.NEW,
             )
+            add_citizen_recipients(alert)
 
     @action(detail=False, methods=["get"], url_path="user")
     def my_issues(self, request):
@@ -262,17 +282,16 @@ class IssueViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
-
-    def _set_validation(self, request, *, validation_status, is_validated, message=""):
-        """Apply a validation state transition and return the serialized issue."""
+    def set_validation(self, request, *, validation_status, is_validated, message="", zone=None):
         issue = self.get_object()
 
         issue.validation_status = validation_status
         issue.validation_message = message
         issue.is_validated = is_validated
-        issue.validator = (
-            request.user if validation_status != Issue.ValidationStatus.PENDING else None
-        )
+
+        issue.validator = request.user if validation_status != Issue.ValidationStatus.PENDING else None
+        if zone is not None:
+            issue.zone = zone
 
         issue.save(
             update_fields=[
@@ -281,18 +300,64 @@ class IssueViewSet(viewsets.ModelViewSet):
                 "is_validated",
                 "validator",
                 "date_updated",
+                "zone",
             ]
         )
+        alert_message = ""
+        if validation_status == Issue.ValidationStatus.VALIDATED:
+            alert_message = f"VALIDATION UPDATE: Your issue '{issue.title}' has been approved."
+        elif validation_status == Issue.ValidationStatus.REJECTED_DUPLICATE:
+            alert_message = f"VALIDATION UPDATE: Your issue '{issue.title}' was rejected. Reason: {message}"
+        elif validation_status == Issue.ValidationStatus.CHANGES_REQUESTED:
+            alert_message = f"VALIDATION UPDATE: Your issue '{issue.title}' requires changes. Reason: {message}"
+        if alert_message:
+            alert = Alert.objects.create(
+                issue=issue,
+                name=alert_message,
+                status=Alert.Status.NEW,
+            )
+            add_citizen_recipients(alert)
 
-        serializer = IssueSerializer(issue, context=self.get_serializer_context())
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        if validation_status == Issue.ValidationStatus.VALIDATED:
+            result = try_auto_assign(issue)  # now returns a dict, not just an agent
+
+            assigned_agent = result["assigned_agent"]
+            if assigned_agent:
+                agent_alert = Alert.objects.create(
+                    issue=issue,
+                    name=f"AGENT ASSIGNED: {assigned_agent.get_full_name() or assigned_agent.email}",
+                    status=Alert.Status.NEW,
+                )
+                add_citizen_recipients(agent_alert)
+                Alert.objects.create(
+                    issue=issue,
+                    name=f"NEW TASK: {issue.title}",
+                    status=Alert.Status.NEW,
+                )
+        else:
+            # For non-validated statuses, return a neutral result
+            result = {"status": "no_zone_match", "assigned_agent": None, "available_agents": []}
+
+        # Build the combined response
+        issue_data = IssueSerializer(issue, context=self.get_serializer_context()).data
+        assignment_result_data = AssignmentResultSerializer(result).data
+
+        return Response(
+            {**issue_data, "assignment_result": assignment_result_data},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=["put"], url_path="validated")
     def validated(self, request, pk=None):
-        return self._set_validation(
+        serializer = self.get_serializer(
+            data=request.data,
+        )
+        serializer.is_valid(raise_exception=True)
+        return self.set_validation(
             request,
             validation_status=Issue.ValidationStatus.VALIDATED,
             is_validated=True,
+            zone=serializer.validated_data["zone"],
         )
 
     @action(detail=True, methods=["put"], url_path="rejected")
@@ -303,7 +368,7 @@ class IssueViewSet(viewsets.ModelViewSet):
                 {"message": "A rejection reason is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return self._set_validation(
+        return self.set_validation(
             request,
             validation_status=Issue.ValidationStatus.REJECTED_DUPLICATE,
             is_validated=False,
@@ -318,7 +383,7 @@ class IssueViewSet(viewsets.ModelViewSet):
                 {"message": "A message describing the required changes is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return self._set_validation(
+        return self.set_validation(
             request,
             validation_status=Issue.ValidationStatus.CHANGES_REQUESTED,
             is_validated=False,
@@ -335,7 +400,7 @@ class IssueViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self._set_validation(
+        return self.set_validation(
             request,
             validation_status=Issue.ValidationStatus.PENDING,
             is_validated=False,
@@ -393,7 +458,7 @@ class IssueViewSet(viewsets.ModelViewSet):
                 gps_long__range=(bounding_box["min_longitude"], bounding_box["max_longitude"]),
             )
             .exclude(status=Issue.Status.DONE)
-            .select_related("owner", "assigned", "validator")
+            .select_related("owner", "assigned", "validator", "zone")
             .prefetch_related("attachments")
         )
 
@@ -402,11 +467,11 @@ class IssueViewSet(viewsets.ModelViewSet):
                 {"issue": issue, "distance_meters": round(distance, 2)}
                 for issue in open_issues
                 if (
-                    distance := calculate_distance_meters(
-                        gps_lat, gps_long, issue.gps_lat, issue.gps_long
-                    )
-                )
-                <= radius
+                       distance := calculate_distance_meters(
+                           gps_lat, gps_long, issue.gps_lat, issue.gps_long
+                       )
+                   )
+                   <= radius
             ),
             key=lambda item: item["distance_meters"],
         )
@@ -430,10 +495,17 @@ class IssueViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         updated_issue = serializer.save()
 
-        # Notify the issue owner that an agent has been assigned.
-        Alert.objects.create(
+        # Notify the issue owner that an agent has been assigned
+        agent_alert = Alert.objects.create(
             issue=updated_issue,
             name=f"AGENT ASSIGNED: {updated_issue.assigned.get_full_name() or updated_issue.assigned.email}",
+            status=Alert.Status.NEW,
+        )
+        add_citizen_recipients(agent_alert)
+
+        Alert.objects.create(
+            issue=updated_issue,
+            name=f"NEW TASK: {updated_issue.title}",
             status=Alert.Status.NEW,
         )
 
@@ -468,8 +540,8 @@ class CommentViewSet(viewsets.ModelViewSet):
         # Citizens see comments on their own non-rejected issues or validated ones.
         return queryset.filter(
             (
-                Q(issue__owner=user)
-                & ~Q(issue__validation_status=Issue.ValidationStatus.REJECTED_DUPLICATE)
+                    Q(issue__owner=user)
+                    & ~Q(issue__validation_status=Issue.ValidationStatus.REJECTED_DUPLICATE)
             )
             | Q(issue__validation_status=Issue.ValidationStatus.VALIDATED)
         ).distinct()
@@ -496,10 +568,7 @@ class CommentViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-
-import time
-
-class AlertViewSet(viewsets.ModelViewSet):
+class AlertViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     serializer_class = AlertSerializer
     permission_classes = [IsAuthenticated]
 
@@ -508,9 +577,6 @@ class AlertViewSet(viewsets.ModelViewSet):
             self.request.user,
             base_qs=Alert.objects.all().order_by("-date_created"),
         )
-
-    def perform_create(self, serializer):
-        serializer.save(status=Alert.Status.NEW)
 
     @extend_schema(request=None)
     @action(detail=True, methods=["put"], url_path="seen")
@@ -580,13 +646,27 @@ class AlertViewSet(viewsets.ModelViewSet):
         return response
 
 
+class AgentAvailabilityView(APIView):
+    permission_classes = [
+        IsAuthenticated,
+        IsAdmin,
+    ]
+
+    def get(self, request):
+        availability_data = calculate_agents_availability()
+
+        return Response(
+            availability_data,
+            status=status.HTTP_200_OK,
+        )
+
+
 class IssueStatisticsView(APIView):
     permission_classes = [IsAuthenticated, IsAdminOrValidator]
 
     def get(self, request):
-        # Consistent param names: date_from / date_to
-        date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
+        date_from = request.query_params.get("date_created")
+        date_to = request.query_params.get("date_updated")
         zone_id = request.query_params.get("zone_id")
 
         queryset = Issue.objects.all()
@@ -595,9 +675,6 @@ class IssueStatisticsView(APIView):
             queryset = queryset.filter(date_created__date__gte=date_from)
         if date_to:
             queryset = queryset.filter(date_created__date__lte=date_to)
-
-        # Issues are linked to zones via the assigned agent
-        # (Zone ↔ agents M2M, agents ↔ assigned_issues reverse FK).
         if zone_id:
             queryset = queryset.filter(assigned__zones__id=zone_id)
 
@@ -623,44 +700,3 @@ class IssueStatisticsView(APIView):
             results[month_key][row["status"]] = row["count"]
 
         return Response(list(results.values()), status=status.HTTP_200_OK)
-
-
-class ZoneStatisticsView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminOrValidator]
-
-    def get(self, request):
-        date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
-
-        issue_qs = Issue.objects.all()
-        if date_from:
-            issue_qs = issue_qs.filter(date_created__date__gte=date_from)
-        if date_to:
-            issue_qs = issue_qs.filter(date_created__date__lte=date_to)
-
-        # Single annotated query instead of one COUNT per zone in a loop.
-        # Annotates each Zone with the number of issues assigned to any of
-        # its agents, respecting the optional date filter via a subquery filter.
-        zones = (
-            Zone.objects.annotate(
-                issue_count=Count(
-                    "agents__assigned_issues",
-                    filter=Q(agents__assigned_issues__in=issue_qs),
-                )
-            )
-            .order_by("issue_count")
-        )
-
-        results = []
-        total = zones.count()
-
-        for i, zone in enumerate(zones):
-            tier = min(4, int(i / total * 4) + 1) if total else 1
-            results.append({
-                "zone_id": str(zone.id),
-                "zone_name": zone.name,
-                "issue_count": zone.issue_count,
-                "tier": tier,
-            })
-
-        return Response(results, status=status.HTTP_200_OK)

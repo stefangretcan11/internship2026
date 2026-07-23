@@ -1,6 +1,7 @@
 import uuid
 from django.conf import settings
 from django.db import models
+from zone.models import Zone
 
 
 class Issue(models.Model):
@@ -44,6 +45,13 @@ class Issue(models.Model):
     location = models.TextField(
         blank=True,
         null=True,
+    )
+    zone = models.ForeignKey(
+        Zone,
+        on_delete=models.SET_NULL,
+        related_name="issues",
+        null=True,
+        blank=True,
     )
 
     assigned = models.ForeignKey(
@@ -93,46 +101,9 @@ class Issue(models.Model):
 
     report_count = models.PositiveIntegerField(default=0)
 
+
     def save(self, *args, **kwargs):
-        is_new = self._state.adding  # a hidden Django property that returns true if the object has never been saved before
-        status_changed = False
-        validation_changed = False
-        assigned_changed = False  # track agent changes
-
-        if not is_new:
-            old_issue = Issue.objects.only('status', 'validation_status', 'assigned').get(pk=self.pk)
-            status_changed = old_issue.status != self.status
-            validation_changed = old_issue.validation_status != self.validation_status
-            assigned_changed = old_issue.assigned_id != self.assigned_id
-
         super().save(*args, **kwargs)
-
-        if is_new:
-            Alert.objects.create(
-                issue=self,
-                name=f"New issue : {self.title}",
-                status=Alert.Status.NEW
-            )
-        else:
-            if status_changed or validation_changed:
-                # alert for citizens
-                Alert.objects.create(
-                    issue=self,
-                    name=f"Status changed: {self.get_status_display()} / {self.get_validation_status_display()}",
-                    status=Alert.Status.NEW
-                )
-
-            if assigned_changed:
-                # alert for citizen when an agent is assigned or removed
-                agent_display = (
-                        f"{self.assigned.first_name} {self.assigned.last_name}".strip() or self.assigned.email
-                ) if self.assigned else "Unassigned"
-
-                Alert.objects.create(
-                    issue=self,
-                    name=f"Agent assigned: Issue has been assigned to {agent_display}",
-                    status=Alert.Status.NEW
-                )
 
     def __str__(self):
         return self.title
@@ -150,6 +121,7 @@ class IssueReport(models.Model):
 
     def __str__(self):
         return f"Report by {self.user} on Issue {self.issue_id}"
+
 
 class IssueFollower(models.Model):
     id = models.UUIDField(
@@ -187,7 +159,8 @@ class IssueFollower(models.Model):
             f"{self.user} follows "
             f"{self.issue.title}"
         )
-    
+
+
 class Comment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     issue = models.ForeignKey('Issue', on_delete=models.CASCADE, related_name='comments')
@@ -247,6 +220,7 @@ class Alert(models.Model):
 
     def __str__(self):
         return f"Alert: {self.name} ({self.status})"
+
 
 class AlertRecipient(models.Model):
     class Status(models.TextChoices):

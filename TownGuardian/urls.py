@@ -21,5 +21,4 @@ urlpatterns = [
 
     # password reset + users
     re_path(r'^auth/', include('users.urls')),
-    path('api/users/', include('users.urls')),
 ]

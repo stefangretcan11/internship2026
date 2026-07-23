@@ -2,6 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 from issue.models import Comment
 from users.models import CustomUser
+from zone.models import Zone
 from .models import (
     Alert,
     Attachment,
@@ -30,7 +31,21 @@ class AssignedAgentSerializer(serializers.Serializer):
     last_name = serializers.CharField()
 
 
+class IssueOwnerSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+
+
+class ZoneSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    neighborhood = serializers.CharField()
+
+
 class IssueSerializer(serializers.ModelSerializer):
+    owner = IssueOwnerSerializer(read_only=True)
+    zone = ZoneSerializer(read_only=True)
     attachments = AttachmentSerializer(
         many=True,
         required=False,
@@ -54,6 +69,7 @@ class IssueSerializer(serializers.ModelSerializer):
             "gps_lat",
             "gps_long",
             "location",
+            "zone",
             "assigned",
             "validator",
             "status",
@@ -80,6 +96,7 @@ class IssueSerializer(serializers.ModelSerializer):
             "report_count",
             "validation_status",
             "validation_message",
+            "zone",
         )
 
     def validate_gps_lat(self, value):
@@ -113,8 +130,8 @@ class IssueSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         if (
-            request is None
-            or not request.user.is_authenticated
+                request is None
+                or not request.user.is_authenticated
         ):
             return False
 
@@ -280,9 +297,10 @@ class AlertSerializer(serializers.ModelSerializer):
 
 
 class IssueAssignSerializer(serializers.Serializer):
-    agent_id = serializers.UUIDField()
+    agent_id = serializers.IntegerField()
 
     def validate_agent_id(self, value):
+
         try:
             agent = CustomUser.objects.get(id=value)
         except CustomUser.DoesNotExist:
@@ -295,19 +313,19 @@ class IssueAssignSerializer(serializers.Serializer):
                 "The selected user is not an agent."
             )
 
-        return value
+        if agent.status != CustomUser.Status.ACTIVE:
+            raise serializers.ValidationError(
+                "The selected agent is not active."
+            )
+
+        return agent
 
     def update(self, instance, validated_data):
-        agent = CustomUser.objects.get(
-            id=validated_data["agent_id"]
-        )
-
-        instance.assigned = agent
+        instance.assigned = validated_data["agent_id"]
         instance.save(
             update_fields=[
                 "assigned",
                 "date_updated",
-
             ]
         )
 
@@ -315,3 +333,34 @@ class IssueAssignSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         raise NotImplementedError
+
+
+class IssueValidationSerializer(serializers.Serializer):
+    zone_id = serializers.PrimaryKeyRelatedField(
+        queryset=Zone.objects.all(),
+        source="zone",
+        required=True,
+    )
+
+
+class AvailableAgentSerializer(serializers.Serializer):
+    """Serializes an agent with their active task count and zone info for the UI."""
+    id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    active_tasks = serializers.IntegerField(source="active_issues_count")
+    zone = serializers.SerializerMethodField()
+
+    def get_zone(self, agent):
+        # Get the first zone this agent belongs to
+        first_zone = agent.zones.first()
+        if first_zone:
+            return {"name": first_zone.name, "neighborhood": first_zone.neighborhood}
+        return None
+
+
+class AssignmentResultSerializer(serializers.Serializer):
+    """Wraps the full auto-assignment outcome for the validated endpoint response."""
+    status = serializers.CharField()  # "assigned" | "zone_overloaded" | "all_zones_overloaded" | "no_zone_match"
+    assigned_agent = AssignedAgentSerializer(allow_null=True)
+    available_agents = AvailableAgentSerializer(many=True)

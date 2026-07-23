@@ -1,186 +1,22 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 
 from issue.views import (
+    AgentAvailabilityView,
     AlertViewSet,
     CommentViewSet,
     IssueViewSet,
     IssueStatisticsView,
-    ZoneStatisticsView
 )
 
-urlpatterns = [
-    # Issues
-    path(
-        "issues/",
-        IssueViewSet.as_view(
-            {
-                "get": "list",
-                "post": "create",
-            }
-        ),
-    ),
-    path(
-        "issues/user/",
-        IssueViewSet.as_view(
-            {
-                "get": "my_issues",
-            }
-        ),
-    ),
-    path(
-        "issues/nearby/",
-        IssueViewSet.as_view(
-            {
-                "get": "nearby_validated_issues",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/",
-        IssueViewSet.as_view(
-            {
-                "get": "retrieve",
-                "patch": "partial_update",
-                "delete": "destroy",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/report/",
-        IssueViewSet.as_view(
-            {
-                "post": "report_issue",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/follow/",
-        IssueViewSet.as_view(
-            {
-                "post": "follow",
-                "delete": "follow",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/validated/",
-        IssueViewSet.as_view(
-            {
-                "put": "validated",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/rejected/",
-        IssueViewSet.as_view(
-            {
-                "put": "rejected",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/incomplete/",
-        IssueViewSet.as_view(
-            {
-                "put": "incomplete",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/pending/",
-        IssueViewSet.as_view(
-            {
-                "put": "pending",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:pk>/assign/",
-        IssueViewSet.as_view(
-            {
-                "patch": "assign",
-            }
-        ),
-    ),
+router = DefaultRouter()
+router.register(r'issues', IssueViewSet, basename='issue')
+router.register(r'alerts', AlertViewSet, basename='alert')
 
-    # Comments
-    path(
-        "issues/<uuid:issue_pk>/comments/",
-        CommentViewSet.as_view(
-            {
-                "get": "list",
-                "post": "create",
-            }
-        ),
-    ),
-    path(
-        "issues/<uuid:issue_pk>/comments/<uuid:pk>/",
-        CommentViewSet.as_view(
-            {
-                "get": "retrieve",
-                "patch": "partial_update",
-                "delete": "destroy",
-            }
-        ),
-    ),
-    # Alerts
-    path(
-        "alerts/",
-        AlertViewSet.as_view(
-            {
-                "get": "list",
-                "post": "create",
-            }
-        ),
-    ),
-    path(
-        "alerts/<uuid:pk>/",
-        AlertViewSet.as_view(
-            {
-                "get": "retrieve",
-                "patch": "partial_update",
-                "delete": "destroy",
-            }
-        ),
-    ),
-    path(
-        "alerts/<uuid:pk>/seen/",
-        AlertViewSet.as_view(
-            {
-                "put": "mark_seen",
-            }
-        ),
-    ),
-    path(
-        "alerts/stream/",
-        AlertViewSet.as_view(
-            {
-                "get": "stream",
-            }
-        ),
-    ),
-    path(
-        "alerts/unseen_count/",
-        AlertViewSet.as_view(
-            {
-                "get": "unseen_count",
-            }
-        ),
-    ),
-    path(
-        "alerts/mark_all_seen/",
-        AlertViewSet.as_view(
-            {
-                "put": "mark_all_seen",
-            }
-        ),
-    ),
-    path(
-        "statistics/issues/",
-        IssueStatisticsView.as_view(),
-    ),
-path(
-    "statistics/zones/",
-    ZoneStatisticsView.as_view(),
-),
+urlpatterns = [
+    path('dashboard/agents-availability/', AgentAvailabilityView.as_view()),
+    path('statistics/issues/', IssueStatisticsView.as_view()),
+    path('issues/<uuid:issue_pk>/comments/', CommentViewSet.as_view({'get': 'list', 'post': 'create'})),
+    path('issues/<uuid:issue_pk>/comments/<uuid:pk>/', CommentViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'})),
+    path('', include(router.urls)),
 ]

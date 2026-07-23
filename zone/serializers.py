@@ -6,6 +6,7 @@ from .models import Zone
 
 
 class ZoneSerializer(serializers.ModelSerializer):
+    resolved_issue_count = serializers.IntegerField(read_only=True)
     agents = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=CustomUser.objects.filter(
@@ -23,7 +24,8 @@ class ZoneSerializer(serializers.ModelSerializer):
             "neighborhood",
             "color",
             "agents",
-            "agents_display"
+            "agents_display",
+            "resolved_issue_count"
         ]
         read_only_fields = ["id"]
 

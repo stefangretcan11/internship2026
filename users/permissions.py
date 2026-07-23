@@ -28,27 +28,6 @@ class IsAdminOrReadOnly(BasePermission):
         )
 
 
-class IsActiveUser(BasePermission):
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.status == CustomUser.Status.ACTIVE
-        )
-
-
-class IsCitizen(BasePermission):
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.status == CustomUser.Status.ACTIVE
-            and request.user.role == CustomUser.Role.CITIZEN
-        )
-
-
 class IsValidator(BasePermission):
 
     def has_permission(self, request, view):
@@ -57,17 +36,6 @@ class IsValidator(BasePermission):
             and request.user.is_authenticated
             and request.user.status == CustomUser.Status.ACTIVE
             and request.user.role == CustomUser.Role.VALIDATOR
-        )
-
-
-class IsAgent(BasePermission):
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.status == CustomUser.Status.ACTIVE
-            and request.user.role == CustomUser.Role.AGENT
         )
 
 
@@ -81,34 +49,6 @@ class IsAdmin(BasePermission):
                 CustomUser.Role.ADMIN,
                 CustomUser.Role.SUPERADMIN,
             }
-        )
-
-
-class IsAgentOrAbove(BasePermission):
-    ALLOWED_ROLES = {
-        CustomUser.Role.AGENT,
-        CustomUser.Role.VALIDATOR,
-        CustomUser.Role.ADMIN,
-        CustomUser.Role.SUPERADMIN,
-    }
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.status == CustomUser.Status.ACTIVE
-            and request.user.role in self.ALLOWED_ROLES
-        )
-
-
-class IsSuperAdmin(BasePermission):
-
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.status == CustomUser.Status.ACTIVE
-            and request.user.role == CustomUser.Role.SUPERADMIN
         )
 
 

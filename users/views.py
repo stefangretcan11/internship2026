@@ -74,7 +74,7 @@ class ValidateUserView(APIView):
             )
 
         user.status = new_status
-        user.save(update_fields=['status'])
+        user.save()
 
         return Response({
             'message': f'User has been {new_status}.',

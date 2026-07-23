@@ -70,6 +70,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware"
 ]
 
 ROOT_URLCONF = 'TownGuardian.urls'
@@ -145,10 +146,14 @@ STATIC_URL = 'static/'
 #     "http://192.168.150.105:8000",
 #     "http://86.123.65.120"
 # ]
-CORS_ALLOWED_ORIGINS = [
-]
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://townguardian.onrender.com",
+])
 
-CORS_ALLOW_ALL_ORIGINS = False
+# Allow all origins if CORS_ALLOW_ALL_ORIGINS is True (useful for development/testing)
+CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=True)
 
 DJOSER = {
     'LOGIN_FIELD': 'email',
@@ -162,11 +167,14 @@ DJOSER = {
         'current_user': 'users.serializers.CustomUserSerializer',
 
     },
+    'OPTIONS': {
+        'sslmode': env('DB_SSLMODE', default='require'),
+    },
 }
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('JWT',),
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=1440),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=14400),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -180,3 +188,5 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='stefangretcan18@gmail.com')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 WSGI_APPLICATION = 'TownGuardian.wsgi.application'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
