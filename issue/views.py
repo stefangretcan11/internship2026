@@ -107,15 +107,12 @@ class IssueViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return (
-            Issue.objects.select_related(
-                "owner",
-                "assigned",
-                "validator",
-                "zone",
-            )
-            .prefetch_related("attachments")
-            .order_by("-report_count", "-date_created")
+        Issue.objects.exclude(owner__status=CustomUser.Status.DELETED)
+        .select_related("owner", "assigned", "validator", "zone")
+        .prefetch_related("attachments")
+        .order_by("-report_count", "-date_created")
         )
+
 
     def get_serializer_class(self):
         if self.action in {"update", "partial_update"}:
@@ -458,9 +455,10 @@ class IssueViewSet(viewsets.ModelViewSet):
                 gps_long__range=(bounding_box["min_longitude"], bounding_box["max_longitude"]),
             )
             .exclude(status=Issue.Status.DONE)
+            .exclude(owner__status=CustomUser.Status.DELETED)
             .select_related("owner", "assigned", "validator", "zone")
             .prefetch_related("attachments")
-        )
+            )
 
         nearby_issues = sorted(
             (

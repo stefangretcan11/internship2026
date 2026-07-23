@@ -11,7 +11,7 @@ class ZoneSerializer(serializers.ModelSerializer):
         many=True,
         queryset=CustomUser.objects.filter(
             role=CustomUser.Role.AGENT,
-        ),
+        ).exclude(status=CustomUser.Status.DELETED),
         required=False,
     )
     agents_display = serializers.SerializerMethodField()

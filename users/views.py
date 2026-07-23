@@ -85,9 +85,10 @@ class ValidateUserView(APIView):
 
 
 class UserManagementViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
     serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdminOrValidator]
+    queryset = User.objects.exclude(status=User.Status.DELETED)
+
 
     VALIDATOR_ALLOWED_FIELDS = {'status'}
 
