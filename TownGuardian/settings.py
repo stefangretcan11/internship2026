@@ -154,17 +154,13 @@ DJOSER = {
     'LOGIN_FIELD': 'email',
     'USER_CREATE_PASSWORD_RETYPE': True,
     'SEND_ACTIVATION_EMAIL': False,
+    'SEND_PASSWORD_RESET_EMAIL': True,
     "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}",  # the frontend url
     'SERIALIZERS': {
         'user_create': 'users.serializers.CustomUserCreateSerializer',
         'user_create_password_retype': 'users.serializers.CustomUserCreateSerializer',
         'token_obtain_pair': 'users.serializers.CustomTokenObtainPairSerializer',
         'current_user': 'users.serializers.CustomUserSerializer',
-
-    },
-    'OPTIONS': {
-        'sslmode': env('DB_SSLMODE', default='require'),
-        'options': '-c search_path=public',
     },
 }
 
