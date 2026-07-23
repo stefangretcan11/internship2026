@@ -100,6 +100,10 @@ DATABASES = {
         'PASSWORD': env('POSTGRES_PASSWORD'),
         'HOST': env('DB_HOST'),
         'PORT': env('DB_PORT'),
+        'OPTIONS': {
+            'sslmode': env('DB_SSLMODE', default='require'),
+            'options': '-c search_path=public',
+        },
     }
 }
 
@@ -139,20 +143,11 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:3000",
-#     "http://127.0.0.1:3000",
-#     "http://127.0.0.1",
-#     "http://192.168.150.105:8000",
-#     "http://86.123.65.120"
-# ]
+
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://townguardian.onrender.com",
 ])
-
-# Allow all origins if CORS_ALLOW_ALL_ORIGINS is True (useful for development/testing)
 CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=True)
 
 DJOSER = {
@@ -169,6 +164,7 @@ DJOSER = {
     },
     'OPTIONS': {
         'sslmode': env('DB_SSLMODE', default='require'),
+        'options': '-c search_path=public',
     },
 }
 
